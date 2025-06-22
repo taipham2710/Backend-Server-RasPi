@@ -5,8 +5,15 @@ from app.api import device, log
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+# This is the correct, robust way to find the .env file.
+# It finds the directory of this file (main.py), goes up one level to the project root,
+# and then finds the .env file there.
+current_dir = Path(__file__).parent
+project_root = current_dir.parent
+env_path = project_root / ".env"
+load_dotenv(dotenv_path=env_path)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
@@ -17,9 +24,14 @@ app = FastAPI()
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',') if origin]
 
-# If no origins are specified, you might want to default to something for development
-if not allowed_origins:
-    allowed_origins = ["http://localhost:3000", "http://localhost:3001"]
+# A print statement to see what origins are actually loaded.
+print("--- FastAPI starting up (Corrected version) ---")
+if os.path.exists(env_path):
+    print(f"Found .env file at: {env_path}")
+else:
+    print(f"Warning: .env file not found at {env_path}. Using defaults.")
+print(f"Loaded ALLOWED_ORIGINS: {allowed_origins}")
+print("---------------------------------------------")
 
 app.add_middleware(
        CORSMiddleware,
