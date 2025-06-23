@@ -18,7 +18,7 @@ class LogUpdate(BaseModel):
     message: Optional[str] = None
     timestamp: Optional[str] = None
 
-@router.post("/log")
+@router.post("/logs")
 def receive_log(log: LogCreate, session: Session = Depends(get_session)):
     device = get_device_by_id(session, log.device_id)
     if not device:
@@ -42,11 +42,11 @@ def receive_log(log: LogCreate, session: Session = Depends(get_session)):
     create_log(session, log_obj)
     return {"status": "ok"}
 
-@router.get("/log", response_model=List[Log])
+@router.get("/logs", response_model=List[Log])
 def get_all_logs(session: Session = Depends(get_session)):
     return list_logs(session)
 
-@router.get("/log/{log_id}", response_model=Log)
+@router.get("/logs/{log_id}", response_model=Log)
 def get_log(log_id: int, session: Session = Depends(get_session)):
     log = get_log_by_id(session, log_id)
     if not log:
@@ -59,8 +59,8 @@ def get_device_logs(device_id: int, session: Session = Depends(get_session)):
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
     return get_logs_by_device(session, device_id)
-
-@router.put("/log/{log_id}", response_model=Log)
+    
+@router.put("/logs/{log_id}", response_model=Log)
 def update_log_endpoint(log_id: int, log_update: LogUpdate, session: Session = Depends(get_session)):
     log = update_log(session, log_id, log_update.dict(exclude_unset=True))
     if not log:
