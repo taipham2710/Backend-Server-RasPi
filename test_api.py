@@ -20,7 +20,7 @@ def test_device_endpoints():
     }
     
     try:
-        response = requests.post(f"{BASE_URL}/device/heartbeat", json=heartbeat_data)
+        response = requests.post(f"{BASE_URL}/api/device/heartbeat", json=heartbeat_data)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}")
     except Exception as e:
@@ -30,7 +30,7 @@ def test_device_endpoints():
     print("\n2. Testing get all devices...")
     devices = []
     try:
-        response = requests.get(f"{BASE_URL}/devices")
+        response = requests.get(f"{BASE_URL}/api/devices")
         print(f"Status: {response.status_code}")
         devices = response.json()
         print(f"Found {len(devices)} devices")
@@ -44,7 +44,7 @@ def test_device_endpoints():
         device_id = devices[0]['id']
         print(f"\n3. Testing get device by ID ({device_id})...")
         try:
-            response = requests.get(f"{BASE_URL}/device/{device_id}")
+            response = requests.get(f"{BASE_URL}/api/device/{device_id}")
             print(f"Status: {response.status_code}")
             print(f"Response: {response.json()}")
         except Exception as e:
@@ -56,7 +56,7 @@ def test_device_endpoints():
             "name": "updated_test_device"
         }
         try:
-            response = requests.put(f"{BASE_URL}/device/{device_id}", json=update_data)
+            response = requests.put(f"{BASE_URL}/api/device/{device_id}", json=update_data)
             print(f"Status: {response.status_code}")
             print(f"Response: {response.json()}")
         except Exception as e:
@@ -75,7 +75,7 @@ def test_log_endpoints():
     }
     
     try:
-        response = requests.post(f"{BASE_URL}/log", json=log_data)
+        response = requests.post(f"{BASE_URL}/api/logs", json=log_data)
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}")
     except Exception as e:
@@ -84,7 +84,7 @@ def test_log_endpoints():
     # Test 2: Lấy tất cả logs
     print("\n2. Testing get all logs...")
     try:
-        response = requests.get(f"{BASE_URL}/log")
+        response = requests.get(f"{BASE_URL}/api/logs")
         print(f"Status: {response.status_code}")
         logs = response.json()
         print(f"Found {len(logs)} logs")
@@ -100,7 +100,7 @@ def test_error_cases():
     # Test 1: Heartbeat không có name
     print("\n1. Testing heartbeat without name...")
     try:
-        response = requests.post(f"{BASE_URL}/device/heartbeat", json={})
+        response = requests.post(f"{BASE_URL}/api/device/heartbeat", json={})
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}")
     except Exception as e:
@@ -109,7 +109,7 @@ def test_error_cases():
     # Test 2: Lấy device không tồn tại
     print("\n2. Testing get non-existent device...")
     try:
-        response = requests.get(f"{BASE_URL}/device/999")
+        response = requests.get(f"{BASE_URL}/api/device/999")
         print(f"Status: {response.status_code}")
         print(f"Response: {response.json()}")
     except Exception as e:
