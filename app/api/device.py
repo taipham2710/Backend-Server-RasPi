@@ -27,6 +27,23 @@ def get_device(device_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Device not found")
     return device
 
+@router.get("/device/{device_id}/updates")
+def check_device_updates(device_id: int, session: Session = Depends(get_session)):
+    """Check for available updates for a specific device"""
+    device = get_device_by_id(session, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    
+    # For now, return a mock response indicating no updates
+    # In a real implementation, this would check for actual updates
+    return {
+        "device_id": device_id,
+        "update_available": False,
+        "current_version": "1.0.0",
+        "latest_version": "1.0.0",
+        "message": "No updates available"
+    }
+
 @router.post("/device/heartbeat")
 def heartbeat(device: DeviceHeartbeat, session: Session = Depends(get_session)):
     if not device.name or device.name.strip() == "":
