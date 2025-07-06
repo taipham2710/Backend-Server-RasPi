@@ -33,6 +33,43 @@ Backend API for IoT device management and logs using FastAPI and SQLModel.
 - **Heartbeat System**: Device heartbeat system
 - **RESTful API**: Full-featured API with validation
 
+## Demo
+
+The project includes a demo script to simulate real-world IoT scenarios for presentations and testing. The demo is located in the `demo/` folder for better organization:
+
+- **Location:** `demo/demo_script.py`
+
+### What does the demo do?
+The demo script simulates multiple IoT devices interacting with the backend, sending logs, triggering deployments, simulating failures, and more. It is designed to showcase the main features of the system and to help you test or present the platform.
+
+### Demo Scenarios
+The demo supports running all scenarios in sequence or a single scenario by number:
+
+1. **Basic IoT Operations:**
+   - Simulates device heartbeats and system monitoring logs.
+2. **Deployment Operations:**
+   - Simulates deployments, including both successful and failed deployments with rollback.
+3. **Bulk Operations:**
+   - Simulates bulk update and deployment across multiple devices.
+4. **Failure and Recovery:**
+   - Simulates system failure, device going offline, and recovery.
+5. **Real-time Monitoring:**
+   - Simulates real-time monitoring data from devices over a period of time.
+
+### How to run the demo
+
+**Run the full demo (all scenarios):**
+```bash
+python demo/demo_script.py
+```
+
+**Run a single scenario (replace N with 1-5):**
+```bash
+python demo/demo_script.py N
+```
+
+---
+
 ## Setup
 
 1. **Clone the repository**:
@@ -105,6 +142,8 @@ Backend-RasPi/
 │   ├── db.py              # Database configuration
 │   ├── main.py            # FastAPI app
 │   └── models.py          # SQLModel models
+├── demo/
+│   └── demo_script.py     # Demo scenarios and simulation
 ├── API_DOCUMENTATION.md   # API documentation
 ├── test_api.py            # Test script
 ├── update_schema.py       # Schema update script
