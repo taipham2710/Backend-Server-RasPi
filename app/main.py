@@ -20,26 +20,30 @@ def create_db_and_tables():
 
 app = FastAPI(title="IoT Device Management API", version="1.0.0")
 
-# Get allowed origins from environment variable
+# Get allowed origins and regex from environment variables
 allowed_origins_str = os.getenv("ALLOWED_ORIGINS", "")
+allowed_origin_regex = os.getenv("ALLOWED_ORIGIN_REGEX", "")
+
 allowed_origins = [origin.strip() for origin in allowed_origins_str.split(',') if origin]
 
-# A print statement to see what origins are actually loaded.
 print("--- FastAPI starting up (Corrected version) ---")
 if os.path.exists(env_path):
     print(f"Found .env file at: {env_path}")
 else:
     print(f"Warning: .env file not found at {env_path}. Using defaults.")
 print(f"Loaded ALLOWED_ORIGINS: {allowed_origins}")
+print(f"Loaded ALLOWED_ORIGIN_REGEX: {allowed_origin_regex}")
 print("---------------------------------------------")
 
+# Use both allow_origins and allow_origin_regex
 app.add_middleware(
-       CORSMiddleware,
-       allow_origins=allowed_origins,
-       allow_credentials=True,
-       allow_methods=["*"],
-       allow_headers=["*"],
-   )
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_origin_regex=allowed_origin_regex or None,  # fallback if regex not defined
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.on_event("startup")
 def on_startup():
