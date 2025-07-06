@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlmodel import select, desc
 from app.models import Device, Log
 
 def get_device_by_id(session, device_id: int):
@@ -77,12 +77,17 @@ def delete_log(session, log_id: int):
     return True
 
 def list_devices(session):
-    from sqlmodel import select
     return session.exec(select(Device)).all()
 
 def list_logs(session):
-    from sqlmodel import select
     return session.exec(select(Log)).all()
 
 def get_logs_by_device(session, device_id: int):
     return session.exec(select(Log).where(Log.device_id == device_id)).all()
+
+def get_latest_log_by_type(session, device_id: int, log_type: str):
+    return session.exec(
+        select(Log)
+        .where(Log.device_id == device_id, Log.type == log_type)
+        .order_by(desc(Log.timestamp))
+    ).first()  
