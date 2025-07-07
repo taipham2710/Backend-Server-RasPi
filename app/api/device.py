@@ -1,18 +1,24 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from app.models import Device
 from app.db import get_session
 from app.crud import get_device_by_name, create_device, update_device_last_seen, list_devices, get_device_by_id, update_device, delete_device
 from sqlmodel import Session
 from typing import List, Optional
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timezone
 from paho.mqtt import client as mqtt
 import os
 import pytz
+import threading
+import time
 
 router = APIRouter()
 
 VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
+
+# Background task to set devices offline if no heartbeat
+CHECK_INTERVAL = 30  # seconds
+OFFLINE_THRESHOLD = 60  # seconds
 
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
@@ -35,6 +41,13 @@ class DeviceResponse(BaseModel):
     class Config:
         orm_mode = True
 
+class DeviceCreate(BaseModel):
+    id: int
+    name: str
+    version: Optional[str] = None
+    status: Optional[str] = "online"
+    location: Optional[str] = None
+
 @router.get("/devices", response_model=List[DeviceResponse])
 def get_all_devices(session: Session = Depends(get_session)):
     devices = list_devices(session)
@@ -43,7 +56,11 @@ def get_all_devices(session: Session = Depends(get_session)):
         if d.id is None:
             raise HTTPException(status_code=500, detail="Device id is None (database integrity error)")
         if d.last_seen:
-            last_seen_vn = d.last_seen.astimezone(VN_TZ)
+            if d.last_seen.tzinfo is None:
+                last_seen_utc = d.last_seen.replace(tzinfo=timezone.utc)
+            else:
+                last_seen_utc = d.last_seen.astimezone(timezone.utc)
+            last_seen_vn = last_seen_utc.astimezone(VN_TZ)
             last_seen = last_seen_vn.isoformat()
         else:
             last_seen = None
@@ -65,7 +82,11 @@ def get_device(device_id: int, session: Session = Depends(get_session)):
     if device.id is None:
         raise HTTPException(status_code=500, detail="Device id is None (database integrity error)")
     if device.last_seen:
-        last_seen_vn = device.last_seen.astimezone(VN_TZ)
+        if device.last_seen.tzinfo is None:
+            last_seen_utc = device.last_seen.replace(tzinfo=timezone.utc)
+        else:
+            last_seen_utc = device.last_seen.astimezone(timezone.utc)
+        last_seen_vn = last_seen_utc.astimezone(VN_TZ)
         last_seen = last_seen_vn.isoformat()
     else:
         last_seen = None
@@ -159,3 +180,49 @@ def trigger_update(device_id: int, session: Session = Depends(get_session)):
         return {"status": "update command sent"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send update command: {e}")
+
+@router.post("/device", response_model=DeviceResponse)
+def create_device_endpoint(device: DeviceCreate, session: Session = Depends(get_session)):
+    # Check if device with this id already exists
+    existing = get_device_by_id(session, device.id)
+    if existing:
+        raise HTTPException(status_code=400, detail="Device with this id already exists")
+    new_device = Device(
+        id=device.id,
+        name=device.name,
+        version=device.version,
+        status=device.status,
+        location=device.location,
+        last_seen=datetime.utcnow()
+    )
+    create_device(session, new_device)
+    if new_device.id is None:
+        raise HTTPException(status_code=500, detail="Device id is None (database integrity error)")
+    return DeviceResponse(
+        id=new_device.id,
+        name=new_device.name,
+        version=new_device.version,
+        status=new_device.status,
+        last_seen=new_device.last_seen.astimezone(VN_TZ).isoformat() if new_device.last_seen else None,
+        location=new_device.location
+    )
+
+def offline_monitor_task():
+    from app.db import get_session
+    from datetime import datetime, timezone
+    import pytz
+    while True:
+        session = next(get_session())
+        devices = list_devices(session)
+        now = datetime.utcnow().replace(tzinfo=timezone.utc)
+        for d in devices:
+            if d.last_seen:
+                delta = (now - d.last_seen.replace(tzinfo=timezone.utc)).total_seconds()
+                if delta > OFFLINE_THRESHOLD and d.status != "offline":
+                    d.status = "offline"
+                    session.add(d)
+        session.commit()
+        time.sleep(CHECK_INTERVAL)
+
+# Start background thread when module loads
+threading.Thread(target=offline_monitor_task, daemon=True).start()
