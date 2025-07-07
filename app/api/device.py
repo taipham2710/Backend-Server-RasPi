@@ -11,6 +11,8 @@ import os
 import pytz
 import threading
 import time
+import requests
+import re
 
 router = APIRouter()
 
@@ -101,19 +103,29 @@ def get_device(device_id: int, session: Session = Depends(get_session)):
 
 @router.get("/device/{device_id}/updates")
 def check_device_updates(device_id: int, session: Session = Depends(get_session)):
-    """Check for available updates for a specific device"""
+    # Function to get the latest version from Docker Hub
+    def get_latest_dockerhub_tag(DOCKERHUB_USERNAME, DOCKERHUB_REPO):
+        url = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_USERNAME}/{DOCKERHUB_REPO}/tags?page_size=100"
+        try:
+            resp = requests.get(url, timeout=5)
+            tags = [t['name'] for t in resp.json().get('results', [])]
+            tags = [t for t in tags if re.match(r'v\d+\.\d+', t)]
+            tags.sort(key=lambda x: tuple(map(int, re.findall(r'\d+', x))), reverse=True)
+            return tags[0] if tags else "v1.0"
+        except Exception:
+            return "v1.0"
+    latest_version = get_latest_dockerhub_tag("taipham2710", "agent-raspi")
     device = get_device_by_id(session, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    
-    # For now, return a mock response indicating no updates
-    # In a real implementation, this would check for actual updates
+    current_version = device.version or "v1.0"
+    update_available = (latest_version != current_version)
     return {
         "device_id": device_id,
-        "update_available": False,
-        "current_version": "1.0.0",
-        "latest_version": "1.0.0",
-        "message": "No updates available"
+        "update_available": update_available,
+        "current_version": current_version,
+        "latest_version": latest_version,
+        "message": "Update available" if update_available else "No updates available"
     }
 
 @router.post("/device/heartbeat")
