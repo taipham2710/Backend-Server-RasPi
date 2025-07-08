@@ -22,6 +22,10 @@ VN_TZ = pytz.timezone("Asia/Ho_Chi_Minh")
 CHECK_INTERVAL = 30  # seconds
 OFFLINE_THRESHOLD = 60  # seconds
 
+# Background task: Notify Slack if new agent image version is available
+LATEST_AGENT_VERSION = None
+CHECK_IMAGE_INTERVAL = 300  # 5 phút
+
 class DeviceUpdate(BaseModel):
     name: Optional[str] = None
     last_seen: Optional[str] = None
@@ -238,3 +242,45 @@ def offline_monitor_task():
 
 # Start background thread when module loads
 threading.Thread(target=offline_monitor_task, daemon=True).start()
+
+def notify_new_agent_version():
+    global LATEST_AGENT_VERSION
+    DOCKERHUB_USERNAME = "taipham2710"
+    DOCKERHUB_REPO = "agent-raspi"
+    def get_latest_dockerhub_tag():
+        url = f"https://hub.docker.com/v2/repositories/{DOCKERHUB_USERNAME}/{DOCKERHUB_REPO}/tags?page_size=100"
+        try:
+            resp = requests.get(url, timeout=5)
+            tags = [t['name'] for t in resp.json().get('results', [])]
+            tags = [t for t in tags if re.match(r'v\d+\.\d+', t)]
+            tags.sort(key=lambda x: tuple(map(int, re.findall(r'\d+', x))), reverse=True)
+            return tags[0] if tags else "v1.0"
+        except Exception:
+            return "v1.0"
+    while True:
+        latest_version = get_latest_dockerhub_tag()
+        if LATEST_AGENT_VERSION is None:
+            LATEST_AGENT_VERSION = latest_version
+        elif latest_version != LATEST_AGENT_VERSION:
+            # Send Slack notification
+            blocks = [
+                {
+                    "type": "header",
+                    "text": {"type": "plain_text", "text": f"🚀 New Agent Image Released!", "emoji": True}
+                },
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"*A new agent image version is available on Docker Hub!*\n*Version:* `{latest_version}`"}
+                },
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": f"<https://hub.docker.com/r/{DOCKERHUB_USERNAME}/{DOCKERHUB_REPO}/tags|View on Docker Hub>"}
+                }
+            ]
+            from app.api.log import send_slack_notification
+            send_slack_notification("", channel="demo-events", blocks=blocks)
+            LATEST_AGENT_VERSION = latest_version
+        time.sleep(CHECK_IMAGE_INTERVAL)
+
+# Start background thread for image version check
+threading.Thread(target=notify_new_agent_version, daemon=True).start()
