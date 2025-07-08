@@ -9,6 +9,7 @@ from datetime import datetime
 from dateutil import parser
 import os
 import requests
+import json
 
 router = APIRouter()
 
@@ -23,21 +24,24 @@ class LogUpdate(BaseModel):
     message: Optional[str] = None
     timestamp: Optional[str] = None
 
-def send_slack_notification(message: str, channel: str = "general", emoji: str = "🔔"):
-    """Enhanced Slack notification with channel support and emoji"""
+def send_slack_notification(message: str, channel: str = "general", emoji: str = "🔔", blocks: Optional[list] = None):
+    """Enhanced Slack notification with channel support, emoji, and Block Kit"""
     webhook_url = os.getenv("SLACK_WEBHOOK_URL")
     if not webhook_url:
         print("SLACK_WEBHOOK_URL not set")
         return
     
-    # Format message with emoji and channel
-    formatted_message = f"{emoji} {message}"
-    
-    payload = {
-        "text": formatted_message,
-        "channel": channel if channel != "general" else None
-    }
-    
+    if blocks:
+        payload = {
+            "blocks": blocks,
+            "channel": channel if channel != "general" else None
+        }
+    else:
+        formatted_message = f"{emoji} {message}"
+        payload = {
+            "text": formatted_message,
+            "channel": channel if channel != "general" else None
+        }
     try:
         response = requests.post(webhook_url, json=payload)
         if response.status_code != 200:
@@ -45,23 +49,47 @@ def send_slack_notification(message: str, channel: str = "general", emoji: str =
     except Exception as e:
         print(f"Slack notification error: {e}")
 
-def send_demo_notification(event_type: str, device_name: str, details: str = ""):
-    """Special notification for demo events"""
+def send_demo_notification(event_type: str, device_name: str, details: str = "", version: Optional[str] = None):
+    """Special notification for demo events with Block Kit"""
     emoji_map = {
-        "deploy": "🚀",
-        "rollback": "🔄", 
-        "online": "✅",
-        "offline": "❌",
-        "update": "📦",
-        "error": "🚨",
-        "success": "🎉",
-        "bulk_operation": "⚡"
+        "deploy": ":rocket:",
+        "rollback": ":arrows_counterclockwise:",
+        "online": ":white_check_mark:",
+        "offline": ":x:",
+        "update": ":package:",
+        "error": ":rotating_light:",
+        "success": ":tada:",
+        "bulk_operation": ":zap:"
     }
-    
-    emoji = emoji_map.get(event_type, "🔔")
-    message = f"**Demo Event:** {event_type.upper()}\n**Device:** {device_name}\n**Details:** {details}"
-    
-    send_slack_notification(message, "demo-events", emoji)
+    color_map = {
+        "deploy": "#36a64f",
+        "rollback": "#e6c229",
+        "online": "#2eb67d",
+        "offline": "#e01e5a",
+        "update": "#439fe0",
+        "error": "#e01e5a",
+        "success": "#36a64f",
+        "bulk_operation": "#439fe0"
+    }
+    emoji = emoji_map.get(event_type, ":bell:")
+    color = color_map.get(event_type, "#439fe0")
+    title = event_type.replace("_", " ").title()
+    # Gộp các trường vào 1 block mrkdwn, dùng *bold* đúng chuẩn Slack
+    text = f"*Device:* {device_name}\n"
+    if version:
+        text += f"*Version:* {version}\n"
+    text += f"*Details:* {details}"
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": f"{emoji} {title} Event", "emoji": True}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text}
+        }
+    ]
+    send_slack_notification("", channel="demo-events", blocks=blocks)
 
 @router.post("/logs")
 def receive_log(log: LogCreate, session: Session = Depends(get_session)):
@@ -93,35 +121,56 @@ def receive_log(log: LogCreate, session: Session = Depends(get_session)):
         log_type = log.type.upper() if log.type else "UNKNOWN"
         log_level = log.log_level.upper() if log.log_level else "UNKNOWN"
         emoji = "🚀" if log.type == "deploy" else "🔄"
-        slack_msg = f"[{log_type}][{log_level}] Device {device.name}: {log.message}"
-        send_slack_notification(slack_msg, "iot-deployments", emoji)
-        
-        # Send demo notification
+        # Block Kit cho event này, dùng *bold* đúng chuẩn Slack
+        text = f"*Device:* {device.name}\n*Level:* {log_level}\n*Details:* {log.message}"
+        send_slack_notification(
+            "",
+            channel="iot-deployments",
+            blocks=[
+                {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} {log_type} Event", "emoji": True}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+            ]
+        )
         send_demo_notification(log.type, device.name, log.message)
-    
     elif log.type == "system":
-        # System monitoring logs
         emoji = "💻"
         slack_msg = f"[SYSTEM] Device {device.name}: {log.message}"
         send_slack_notification(slack_msg, "iot-monitoring", emoji)
-    
     elif log.log_level == "error":
-        # Error logs
         emoji = "🚨"
-        slack_msg = f"[ERROR] Device {device.name}: {log.message}"
-        send_slack_notification(slack_msg, "iot-alerts", emoji)
-    
+        text = f"*Device:* {device.name}\n*Details:* {log.message}"
+        send_slack_notification(
+            "",
+            channel="iot-alerts",
+            blocks=[
+                {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} ERROR", "emoji": True}},
+                {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+            ]
+        )
     elif log.type == "heartbeat":
-        # Heartbeat logs (only for demo)
         if "offline" in log.message.lower():
             emoji = "❌"
-            slack_msg = f"[OFFLINE] Device {device.name} is offline"
-            send_slack_notification(slack_msg, "iot-status", emoji)
+            text = f"*Device:* {device.name}\n*Details:* Device went offline"
+            send_slack_notification(
+                "",
+                channel="iot-status",
+                blocks=[
+                    {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} OFFLINE", "emoji": True}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+                ]
+            )
             send_demo_notification("offline", device.name, "Device went offline")
         elif "online" in log.message.lower():
             emoji = "✅"
-            slack_msg = f"[ONLINE] Device {device.name} is back online"
-            send_slack_notification(slack_msg, "iot-status", emoji)
+            text = f"*Device:* {device.name}\n*Details:* Device came back online"
+            send_slack_notification(
+                "",
+                channel="iot-status",
+                blocks=[
+                    {"type": "header", "text": {"type": "plain_text", "text": f"{emoji} ONLINE", "emoji": True}},
+                    {"type": "section", "text": {"type": "mrkdwn", "text": text}}
+                ]
+            )
             send_demo_notification("online", device.name, "Device came back online")
     
     return {"status": "ok"}
@@ -180,18 +229,31 @@ def demo_bulk_update(session: Session = Depends(get_session)):
     devices = list_devices(session)
     device_count = len(devices)
     
-    # Send demo notification
-    send_demo_notification(
-        "bulk_operation", 
-        f"{device_count} devices", 
-        f"Bulk update initiated for {device_count} devices"
-    )
+    # Send demo notification (Block Kit)
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "🚀 BULK UPDATE DEMO", "emoji": True}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"Initiating update for {device_count} devices"}
+        }
+    ]
+    send_slack_notification("", "demo-events", blocks=blocks)
     
-    # Send to specific channels
-    send_slack_notification(
-        f"🚀 **BULK UPDATE DEMO**\nInitiating update for {device_count} devices",
-        "demo-events"
-    )
+    # Send to specific channels (Block Kit)
+    blocks2 = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "⚡ BULK OPERATION", "emoji": True}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Devices:* {device_count}\n*Details:* Bulk update initiated for {device_count} devices"}
+        }
+    ]
+    send_slack_notification("", "demo-events", blocks=blocks2)
     
     return {
         "message": f"Bulk update demo initiated for {device_count} devices",
@@ -212,17 +274,18 @@ def demo_system_failure(session: Session = Depends(get_session)):
     # Simulate random device failure
     failed_device = random.choice(devices)
     
-    # Send demo notifications
-    send_demo_notification(
-        "error", 
-        failed_device.name, 
-        "Simulated system failure for demo"
-    )
-    
-    send_slack_notification(
-        f"🚨 **DEMO: System Failure**\nDevice {failed_device.name} simulated failure",
-        "demo-events"
-    )
+    # Send demo notifications (Block Kit)
+    blocks = [
+        {
+            "type": "header",
+            "text": {"type": "plain_text", "text": "🔔 :rotating_light: DEMO: System Failure", "emoji": True}
+        },
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"Device {failed_device.name} simulated failure"}
+        }
+    ]
+    send_slack_notification("", "demo-events", blocks=blocks)
     
     return {
         "message": f"System failure demo: {failed_device.name}",
